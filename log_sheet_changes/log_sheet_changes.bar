@@ -1,0 +1,104 @@
+' Add this code to ThisWorkbook module
+Private PreviousValues As Object
+
+Private Sub Workbook_Open()
+    ' Initialize change tracking when the workbook opens
+    Call InitializeChangeTracking
+    Set PreviousValues = CreateObject("Scripting.Dictionary")
+End Sub
+
+Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
+    ' Track the current values before changes are made
+    If Sh.Name = "MAGAZYN" Then
+        If Not PreviousValues Is Nothing Then
+            PreviousValues.RemoveAll ' Clear the dictionary
+            Dim cell As Range
+            For Each cell In Target.Cells
+                If cell.Row > 1 Then
+                    ' Store the current value as the "previous" value
+                    PreviousValues(cell.Address(False, False)) = cell.Value
+                End If
+            Next cell
+        End If
+    End If
+End Sub
+
+Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    ' Only track changes on Sheet1
+    If Sh.Name = "MAGAZYN" Then
+        Application.EnableEvents = False ' Prevent infinite loops
+
+        ' Get the log sheet, create if it doesn't exist
+        Dim wsLog As Worksheet
+        On Error Resume Next
+        Set wsLog = ThisWorkbook.Sheets("ChangeLog")
+        On Error GoTo 0
+
+        If wsLog Is Nothing Then
+            Call InitializeChangeTracking
+            Set wsLog = ThisWorkbook.Sheets("ChangeLog")
+        End If
+
+        ' Log each changed cell
+        Dim cell As Range
+        For Each cell In Target.Cells
+            If cell.Row > 1 Then
+                ' Get column name from row 1
+                Dim columnName As String
+                columnName = Sh.Cells(1, cell.Column).Value
+
+                ' Find the next empty row in log
+                Dim nextRow As Long
+                nextRow = wsLog.Cells(wsLog.Rows.Count, "A").End(xlUp).Row + 1
+
+                ' Retrieve the previous value from the dictionary
+                Dim prevValue As Variant
+                If PreviousValues.Exists(cell.Address(False, False)) Then
+                    prevValue = PreviousValues(cell.Address(False, False))
+                Else
+                    prevValue = "N/A" ' For safety
+                End If
+
+                ' Log the change details
+                wsLog.Cells(nextRow, 1) = Now()                           ' Timestamp
+                wsLog.Cells(nextRow, 2) = Application.UserName           ' Modified By
+                wsLog.Cells(nextRow, 3) = columnName                     ' Column Name
+                wsLog.Cells(nextRow, 4) = cell.Address(False, False)     ' Cell Address
+                wsLog.Cells(nextRow, 5) = cell.Row                       ' Row Number
+                wsLog.Cells(nextRow, 6) = prevValue                      ' Previous Value
+                wsLog.Cells(nextRow, 7) = cell.Value                     ' New Value
+            End If
+        Next cell
+
+        Application.EnableEvents = True ' Re-enable events
+    End If
+End Sub
+
+' Helper function to set up the log sheet
+Private Sub InitializeChangeTracking()
+    Dim wsLog As Worksheet
+    On Error Resume Next
+    Set wsLog = ThisWorkbook.Sheets("ChangeLog")
+    On Error GoTo 0
+
+    If wsLog Is Nothing Then
+        Set wsLog = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsLog.Name = "ChangeLog"
+
+        ' Add headers
+        wsLog.Cells(1, 1) = "DATA"
+        wsLog.Cells(1, 2) = "EDYTOR"
+        wsLog.Cells(1, 3) = "KOLUMNA"
+        wsLog.Cells(1, 4) = "ADRES"
+        wsLog.Cells(1, 5) = "REKORD"
+        wsLog.Cells(1, 6) = "PRE"
+        wsLog.Cells(1, 7) = "POST"
+
+        ' Format timestamp column
+        wsLog.Columns("A").NumberFormat = "yyyy-mm-dd hh:mm:ss"
+
+    End If
+End Sub
+
+
+
